@@ -40,6 +40,9 @@ local function batteryWidget()
     end)
     upower_battery.monitorProperty("Percentage", function(value)
         battery_bar:set_value(value)
+        if value < 10 then
+            naughty.notify{text="Low battery: "..value.."%", timeout=30, preset=naughty.config.presets.critical}
+        end
         table.insert(battery_history, {os.time(), value, upower_battery.properties.State})
     end)
 
