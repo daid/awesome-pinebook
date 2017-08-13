@@ -1,65 +1,58 @@
 local awful = require("awful")
 local wibox = require("wibox")
 local naughty = require("naughty")
+local dbusRemoteObject = require("pinebook.dbusRemoteObject")
+local gli = require("lgi")
+local GLib = gli.GLib
 
-local wlan_state = ""
+local function updateWifiState(widget, new_state)
+    if widget.wifi_state == new_state then return end
+    widget.wifi_state = new_state
+    naughty.notify{text="Wifi:"..new_state}
 
---Abuse the progressbar to get a filled area
-local widget = wibox.widget{
-    forced_width = 8,
-    value = 1.0,
-    color = "#202020",
-    widget = wibox.widget.progressbar
-}
-
-local function updateWirelessWidget()
-    if wlan_state == "disconnected" then
+    if new_state == "disconnected" then
         widget.color = "#aa2020"
-    elseif wlan_state == "connecting" then
+    elseif new_state == "connecting" then
         widget.color = "#aaaa20"
-    elseif wlan_state == "connected" then
+    elseif new_state == "connected" then
         widget.color = "#20aa20"
     end
 end
 
-local function updateWirelessState()
-    awful.spawn.easy_async("nmcli -t -f device,state,connection device", function(stdout, stderr, exitreason, exitcode)
-        for line in string.gmatch(stdout, "[^\n]+") do
-            local device, state, connection = string.match(line, "([^:]*):([^:]*):([^:]*)")
-            if device == "wlan0" then
-                wlan_state = state
-                wlan_connection = connection
-            end
+local function addWifiDevice(widget, device_path)
+    local device = dbusRemoteObject.system("org.freedesktop.NetworkManager", device_path, "org.freedesktop.NetworkManager.Device")
+    device.monitorProperty("State", function(state)
+        if state == 100 then
+            updateWifiState(widget, "connected")
+        elseif state == 50 or state == 70 or state == 80 or state == 90 then
+            updateWifiState(widget, "connecting")
+        else
+            --naughty.notify{text="Wifi state:"..tostring(state)}
+            updateWifiState(widget, "disconnected")
         end
-        updateWirelessWidget()
     end)
 end
 
-local monitor_pid = awful.spawn.with_line_callback("nmcli monitor", {
-    stdout = function(line)
-        if string.sub(line, 1, 7) == "wlan0: " then
-            if string.find(line, "disconnected") then
-                naughty.notify{text="Wireless disconnected"}
-            elseif string.find(line, "connecting") then
-                naughty.notify{text="Wireless connecting"}
-            elseif string.find(line, "connected") then
-                naughty.notify{text="Wireless connected"}
-            end
-            updateWirelessState()
+local function createNetworkWidget()
+    local widget = wibox.widget{
+        forced_width = 8,
+        value = 1.0,
+        color = "#202020",
+        widget = wibox.widget.progressbar
+    }
+    
+    local nm = dbusRemoteObject.system("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager", "org.freedesktop.NetworkManager")
+    nm.GetAllDevices(nil, function(result)
+        for idx=1,#result[1] do
+            local device_path = result[1][idx]
+            dbusRemoteObject.system("org.freedesktop.NetworkManager", device_path, "org.freedesktop.DBus.Properties").Get(GLib.Variant("(ss)", {"org.freedesktop.NetworkManager.Device", "DeviceType"}), function(result)
+                if result[1].value == 2 then
+                    addWifiDevice(widget, device_path)
+                end
+            end)
         end
-    end,
-})
-awesome.connect_signal("exit", function()
-    awful.spawn("kill " .. monitor_pid)
-end)
+    end)
+    return widget
+end
 
-local tt = awful.tooltip({
-    objects = { widget },
-    timer_function = function()
-        return wlan_state..":"..wlan_connection
-    end
-})
-
-updateWirelessState()
-
-return widget
+return createNetworkWidget

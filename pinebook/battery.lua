@@ -67,8 +67,8 @@ local function batteryWidget()
             return result
         end
     })
---]]
+
     return wibox.widget{battery_bar, forced_width = 8, direction = 'east', layout = wibox.container.rotate}
 end
 
-return batteryWidget()
+return batteryWidget
