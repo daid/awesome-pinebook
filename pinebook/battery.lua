@@ -6,7 +6,7 @@ local dbusRemoteObject = require("pinebook.dbusRemoteObject")
 
 local function formatTime(seconds)
     if seconds > 60 * 60 then
-        return string.format("%d hours", seconds / 60 / 60)
+        return string.format("%.1f hours", seconds / 60 / 60)
     end
     if seconds > 60 then
         return string.format("%d minutes", seconds / 60)

@@ -27,7 +27,8 @@ function dbusBus.__call(self, name, path, interface)
         _path = path,
         _interface = interface,
         _property_change_callbacks = {},
-        _property_values = {}
+        _property_values = {},
+        _callback_ids = {},
     }, dbusObjectProxy)
 end
 function dbusObjectProxy.__index(self, key)
@@ -81,16 +82,48 @@ function dbusObjectProxy.__index(self, key)
     if key == "properties" then
         return rawget(self, "_property_values")
     end
+    if key == "getPropertyValue" then
+        return function(property_name, callback)
+            local bus = rawget(self, "_bus")
+            local name = rawget(self, "_name")
+            local path = rawget(self, "_path")
+            local interface = rawget(self, "_interface")
+            bus:call(
+                name, path, "org.freedesktop.DBus.Properties", "Get",
+                GLib.Variant("(ss)", {interface, property_name}), nil, Gio.DBusConnectionFlags.NONE, -1, nil,
+                function(bus, res)
+                    res, err = bus:call_finish(res)
+                    if err ~= nil then
+                        error(err)
+                    else
+                        callback(res[1])
+                    end
+                end)
+        end
+    end
     if key == "connectToSignal" then
         return function(signal_name, callback)
             local bus = rawget(self, "_bus")
             local name = rawget(self, "_name")
             local path = rawget(self, "_path")
             local interface = rawget(self, "_interface")
-            bus:signal_subscribe(name, interface, signal_name, path, nil, Gio.DBusSignalFlags.NONE,
+            table.insert(rawget(self, "_callback_ids"), bus:signal_subscribe(name, interface, signal_name, path, nil, Gio.DBusSignalFlags.NONE,
                 function(connection, sender_name, object_path, interface_name, signal_name, parameters)
                     callback(parameters)
                 end)
+            )
+        end
+    end
+    if key == "disconnectAllSignals" then
+        return function()
+            if rawget(self, "_property_monitor") ~= nil then
+                bus:signal_unsubscribe(rawget(self, "_property_monitor"))
+                rawset(self, "_property_monitor", nil)
+            end
+            for _, id in ipairs(rawget(self, "_callback_ids")) do
+                bus:signal_unsubscribe(id)
+            end
+            rawset(self, "_callback_ids", {})
         end
     end
     return setmetatable({

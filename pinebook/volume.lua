@@ -37,6 +37,11 @@ local function volumeWidgetConstructor()
 
             if muted == "" then
                 volume_bar:set_value(volume)
+                if volume > 100 then
+                    volume_bar:set_color("#aa4040")
+                else
+                    volume_bar:set_color("#4040aa")
+                end
             else
                 volume_bar:set_value(0)
             end
@@ -45,6 +50,12 @@ local function volumeWidgetConstructor()
 
     awesome.connect_signal("volume_changed", function() updateVolume(true) end)
     updateVolume()
+
+    volume_bar:connect_signal("button::press", function()
+        awful.spawn.easy_async("pactl set-sink-mute 0 toggle", function(stdout, stderr, reason, exit_code)
+            awesome.emit_signal("volume_changed")
+        end)
+    end)
 
     return wibox.widget{volume_bar, forced_width = 8, direction = 'east', layout = wibox.container.rotate}
 end
